@@ -23,19 +23,20 @@ Most server panels are too heavy or not designed for mobile. HELM is different. 
 
 | Monitor | Terminal |
 |:---:|:---:|
-| ![Monitor — live CPU, RAM, disk, swap, load average, network and processes](docs/IMG_6473.webp) | ![Terminal — full xterm.js web terminal with quick-command buttons](docs/IMG_6474.webp) |
+| ![Monitor — live CPU, RAM, disk, swap, load average, network and processes](docs/images/monitor.webp) | ![Terminal — full xterm.js web terminal with quick-command buttons](docs/images/terminal.webp) |
 | **Real-time metrics, live graph & per-process control.** | **Full web terminal with one-tap shortcuts.** |
 
 | Services | System |
 |:---:|:---:|
-| ![Services — systemd service manager with start, stop, restart and log actions](docs/IMG_6475.webp) | ![System — quick actions, disk analyzer and UFW firewall management](docs/IMG_6476.webp) |
+| ![Services — systemd service manager with start, stop, restart and log actions](docs/images/services.webp) | ![System — quick actions, disk analyzer and UFW firewall management](docs/images/system.webp) |
 | **systemd manager: restart, stop & tail logs per service.** | **Quick actions, disk analyzer & UFW firewall.** |
 
 ## 🛠 Tech Stack
-- **Backend**: Node.js (High-concurrency event loop)
-- **Communication**: WebSockets (Real-time duplex streaming)
+- **Backend**: Node.js core `http` module (no web framework — zero overhead)
+- **Communication**: WebSockets (`ws`) for real-time duplex streaming
+- **Terminal**: `node-pty` (server-side PTY) + xterm.js (browser)
 - **Frontend**: Pure Vanilla JS & CSS Variables (Zero dependencies, ultra-fast)
-- **Terminal**: node-pty & xterm.js
+- **Config**: `dotenv`
 
 ## 🚀 Quick Start
 1. **Clone & Install**
@@ -44,24 +45,60 @@ Most server panels are too heavy or not designed for mobile. HELM is different. 
    cd helm
    npm install
    ```
-2. **Launch**
+2. **Configure** (optional — sensible defaults are baked in)
+   Create a `.env` file in the project root:
    ```bash
-   node server.js
+   HELM_PORT=20131
+   HELM_USER=admin
+   HELM_PASS=change-me
    ```
-3. **Secure with Caddy (Recommended)**
+3. **Launch**
+   ```bash
+   npm start      # production
+   npm run dev    # auto-reload via nodemon
+   ```
+   HELM listens on `http://0.0.0.0:20131` by default.
+
+4. **Secure with Caddy (Recommended)**
    Add this to your `Caddyfile`:
    ```caddy
    control.yourdomain.com {
-       # Protect API and WebSockets
-       basic_auth /api/* /ws/* {
-           YOUR_USER YOUR_HASHED_PASSWORD
-       }
        reverse_proxy localhost:20131
    }
    ```
 
+## ⚙️ Configuration
+| Variable    | Default      | Description                                  |
+|-------------|--------------|----------------------------------------------|
+| `HELM_PORT` | `20131`      | HTTP/WebSocket listen port                   |
+| `HELM_USER` | `admin`      | Basic-auth username                          |
+| `HELM_PASS` | `password`   | Basic-auth password — **change in production** |
+
+## 📁 Project Structure
+```
+helm/
+├── src/
+│   ├── app.js              # HTTP + WebSocket bootstrap
+│   ├── api/
+│   │   └── router.js       # Static file serving + all /api/* routes
+│   ├── ws/
+│   │   └── handler.js      # /ws/terminal and /ws/logs/* streams
+│   ├── middleware/
+│   │   ├── auth.js         # Basic-auth (header + WS query param)
+│   │   └── logger.js       # Request logging
+│   └── utils/
+│       └── metrics.js      # System metrics collection
+├── public/                 # PWA frontend (index.html, manifest, sw, icon)
+└── docs/                   # Documentation & screenshots
+```
+
+## 📚 Documentation
+- [Architecture](docs/ARCHITECTURE.md) — how the pieces fit together
+- [Configuration](docs/CONFIGURATION.md) — environment variables & deployment
+- [API Reference](docs/API.md) — REST endpoints & WebSocket protocol
+
 ## 🔒 Security Note
-HELM is designed to be used behind a reverse proxy (like Caddy or Nginx) with **Basic Authentication**. The native login UI provided in the app will securely handle these credentials for a seamless mobile experience.
+HELM executes privileged system commands (`systemctl`, `ufw`, `kill`, `reboot`) and exposes a full shell over WebSocket. **Never expose it to the public internet without TLS and authentication.** Always run it behind a reverse proxy (Caddy/Nginx) with HTTPS. Authentication is enforced via HTTP Basic Auth on every `/api/*` route and via an `auth` query parameter on WebSocket connections — see [docs/CONFIGURATION.md](docs/CONFIGURATION.md#security).
 
 ---
 *Take the helm of your infrastructure. Sikat! 🚀*
