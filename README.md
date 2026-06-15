@@ -19,6 +19,18 @@ Most server panels are too heavy or not designed for mobile. HELM is different. 
 - 🛡️ **Built-in Security**: Firewall (UFW) management and native authentication UI.
 - 📱 **PWA Perfection**: Add to Home Screen for a fullscreen, standalone experience.
 
+## 📸 Screenshots
+
+| Monitor | Terminal |
+|:---:|:---:|
+| ![Monitor — live CPU, RAM, disk, swap, load average, network and processes](docs/IMG_6473.webp) | ![Terminal — full xterm.js web terminal with quick-command buttons](docs/IMG_6474.webp) |
+| **Real-time metrics, live graph & per-process control.** | **Full web terminal with one-tap shortcuts.** |
+
+| Services | System |
+|:---:|:---:|
+| ![Services — systemd service manager with start, stop, restart and log actions](docs/IMG_6475.webp) | ![System — quick actions, disk analyzer and UFW firewall management](docs/IMG_6476.webp) |
+| **systemd manager: restart, stop & tail logs per service.** | **Quick actions, disk analyzer & UFW firewall.** |
+
 ## 🛠 Tech Stack
 - **Backend**: Node.js (High-concurrency event loop)
 - **Communication**: WebSockets (Real-time duplex streaming)
