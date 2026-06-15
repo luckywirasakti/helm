@@ -7,6 +7,12 @@ function exec(cmd) {
   catch { return ''; }
 }
 
+// Root path used for the "disk" metric. Default is `/` (host install or
+// `pid: host` container). When the container is NOT sharing the host's
+// mount namespace, set `HELM_DISK_ROOT=/host` (or similar) and bind-mount
+// the host's filesystem read-only at that path.
+const DISK_ROOT = (process.env.HELM_DISK_ROOT || '/').replace(/[^\w/.-]/g, '') || '/';
+
 /* ── System Metrics ── */
 function getMetrics() {
   const uptimeRaw = exec('cat /proc/uptime');
@@ -19,7 +25,7 @@ function getMetrics() {
   const g = k => parseInt((memInfo.match(new RegExp(k + ':\\s+(\\d+)')) || [])[1] || 0, 10);
   const memTotal = g('MemTotal'), memAvail = g('MemAvailable'), memUsed = memTotal - memAvail;
   const swapTotal = g('SwapTotal'), swapFree = g('SwapFree'), swapUsed = swapTotal - swapFree;
-  const dp = exec("df -B1 / | tail -1").split(/\s+/);
+  const dp = exec(`df -B1 ${DISK_ROOT} | tail -1`).split(/\s+/);
   const diskTotal = parseInt(dp[1] || '0', 10), diskUsed = parseInt(dp[2] || '0', 10);
 
   const netRaw = exec("cat /proc/net/dev | tail -n +3");

@@ -1,0 +1,12 @@
+# Keep the build context small — Docker can't use the local .gitignore.
+.git
+.gitignore
+node_modules
+npm-debug.log
+.DS_Store
+.env
+*.log
+.vscode
+.idea
+coverage
+docs/images

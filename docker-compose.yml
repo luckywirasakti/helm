@@ -1,0 +1,60 @@
+# docker-compose.yml for HELM — "manage this host from a container" pattern.
+#
+# This is OPTIONAL. The simplest deployment is still `npm install && npm start`
+# directly on the host (what the README implies). Use this compose file when
+# you want HELM isolated from the host's node_modules + node version, but
+# still need it to monitor and control the host.
+#
+# What each flag does:
+#   pid: host         → /proc inside the container shows the host's view, so
+#                       ps / kill / loadavg / meminfo / net/dev all read
+#                       host values. No code changes required for those.
+#   network_mode: host → bind to the host's network so HELM listens on the
+#                       host's port 20131 directly (and so the terminal can
+#                       reach any local service).
+#   cap_add: SYS_PTRACE → lets `ps aux` see processes in the host PID NS.
+#   cap_add: NET_ADMIN  → lets `ufw` (iptables) work.
+#   /run/systemd         → lets `systemctl` talk to the host's systemd socket.
+#   /var/log/journal     → lets `journalctl` read host logs.
+#
+# What this compose does NOT do (and how to deal with each):
+#   * `reboot` from /api/action — disabled: no --privileged. Run `sudo
+#     reboot` manually on the host if needed. This is a deliberate safety
+#     choice; a misclick shouldn't be able to take down the box.
+#   * Disk usage of `/` — if `pid: host` is in effect, `df /` still shows
+#     the container's overlay, not the host's. Add a read-only bind of
+#     the host root (`- /:/hostfs:ro`) and set `HELM_DISK_ROOT=/hostfs` in
+#     the environment. See the `disk-monitor` profile below.
+#   * Disk-write operations from inside HELM (e.g. clear-cache) — these
+#     will silently target the container, not the host. Use with care.
+#
+# Run: `docker compose up -d`  (from the repo root)
+
+services:
+  helm:
+    build: .
+    image: helm:local
+    container_name: helm
+    restart: unless-stopped
+    pid: host
+    network_mode: host
+    environment:
+      HELM_PORT: ${HELM_PORT:-20131}
+      HELM_USER: ${HELM_USER:-admin}
+      HELM_PASS: ${HELM_PASS:-change-me}
+      # Set this AND add `- /:/hostfs:ro` below if you want the disk metric
+      # to reflect the host's actual root filesystem.
+      # HELM_DISK_ROOT: /hostfs
+    volumes:
+      - /run/systemd:/run/systemd:ro
+      - /var/log/journal:/var/log/journal:ro
+    cap_add:
+      - SYS_PTRACE
+      - NET_ADMIN
+    # No `--privileged` by design. See "What this compose does NOT do" above.
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:'+process.env.HELM_PORT+'/healthz',r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
