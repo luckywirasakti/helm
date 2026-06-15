@@ -29,6 +29,12 @@ module.exports = async (req, res, url, next) => {
   const p = url.pathname;
   const PUBLIC = path.join(__dirname, '..', '..', 'public');
 
+  // Unauthenticated health probe (for reverse proxies, k8s, docker, uptime monitors).
+  if (p === '/healthz') {
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    return res.end(JSON.stringify({ ok: true, service: 'helm', uptime: process.uptime() }));
+  }
+
   // Static files handler
   if (!p.startsWith('/api/')) {
     let file = p === '/' ? 'index.html' : p.slice(1);

@@ -1,5 +1,18 @@
 node_modules/
 .DS_Store
 .env
-package-lock.json
 *.log
+
+# Build artifacts
+dist/
+build/
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Coverage
+coverage/
+.nyc_output/

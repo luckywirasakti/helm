@@ -41,7 +41,7 @@ Most server panels are too heavy or not designed for mobile. HELM is different. 
 ## 🚀 Quick Start
 1. **Clone & Install**
    ```bash
-   git clone https://github.com/yourusername/helm.git
+   git clone https://github.com/luckywirasakti/helm.git
    cd helm
    npm install
    ```
