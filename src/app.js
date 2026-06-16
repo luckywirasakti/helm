@@ -2,13 +2,14 @@ require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') }
 const http = require('http');
 const { createWSS } = require('./ws/handler');
 const router = require('./api/router');
+const { handleAuth } = require('./api/auth');
 const { requireAuth, checkAuthFromURL } = require('./middleware/auth');
 const logger = require('./middleware/logger');
 
 const PORT = parseInt(process.env.HELM_PORT, 10) || 20131;
 
 // ── HTTP Server ──
-const server = http.createServer((req, res) => {
+const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const start = Date.now();
 
@@ -22,7 +23,14 @@ const server = http.createServer((req, res) => {
     return res.end();
   }
 
-  // Routes
+  // ── Telegram Auth routes (no auth required) ──
+  const authHandled = await handleAuth(req, res, url);
+  if (authHandled) {
+    logger(req.method, url.pathname, res.statusCode, Date.now() - start);
+    return;
+  }
+
+  // ── Main router (with auth guard) ──
   router(req, res, url, (err) => {
     const ms = Date.now() - start;
     logger(req.method, url.pathname, res.statusCode, ms);
