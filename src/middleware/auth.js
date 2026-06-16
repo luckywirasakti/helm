@@ -46,4 +46,4 @@ function checkAuthFromURL(url) {
   return !!tokenData;
 }
 
-module.exports = { requireAuth, checkAuthFromURL };
+module.exports = { requireAuth, checkAuthFromURL, checkBasicAuth, checkBearerAuth };

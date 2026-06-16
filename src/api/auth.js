@@ -88,6 +88,32 @@ function parseBody(req) {
 async function handleAuth(req, res, url) {
   const p = url.pathname;
 
+  // GET /api/auth/check — lightweight auth validation (no console noise)
+  if (p === '/api/auth/check' && req.method === 'GET') {
+    const authHeader = req.headers['authorization'];
+    if (!authHeader) {
+      return json(res, { ok: false }, 401);
+    }
+    // Check Basic Auth inline (no circular dep)
+    if (authHeader.startsWith('Basic ')) {
+      const expected = 'Basic ' + Buffer.from(`${process.env.HELM_USER || 'admin'}:${process.env.HELM_PASS || 'password'}`).toString('base64');
+      const valid = authHeader === expected;
+      return json(res, { ok: valid }, valid ? 200 : 401);
+    }
+    // Check Bearer token
+    if (authHeader.startsWith('Bearer ')) {
+      const token = authHeader.slice(7);
+      const data = checkAppToken(token);
+      return json(res, { ok: !!data }, data ? 200 : 401);
+    }
+    return json(res, { ok: false }, 401);
+  }
+
+  // GET /api/auth/tg/status — Check if Telegram auth is configured (public, no auth needed)
+  if (p === '/api/auth/tg/status' && req.method === 'GET') {
+    return json(res, { enabled: ENABLED, botUsername: BOT_USERNAME });
+  }
+
   // POST /api/auth/tg/qr — Generate QR code for Telegram login
   if (p === '/api/auth/tg/qr' && req.method === 'POST') {
     if (!ENABLED) return json(res, { ok: false, error: 'Telegram auth not configured' }, 503);
@@ -99,6 +125,7 @@ async function handleAuth(req, res, url) {
         sessionId: session.sessionId,
         qrDataUrl: session.qrDataUrl,
         deepLink: session.deepLink,
+        botUsername: BOT_USERNAME,
         expiresAt: session.expiresAt,
       });
     } catch (err) {
@@ -106,19 +133,140 @@ async function handleAuth(req, res, url) {
     }
   }
 
-  // POST /api/auth/tg/callback — Telegram bot callback webhook
+  // POST /api/auth/tg/callback — Telegram bot webhook
   if (p === '/api/auth/tg/callback' && req.method === 'POST') {
     if (!ENABLED) return json(res, { ok: false, error: 'Telegram auth not configured' }, 503);
 
     try {
       const body = await parseBody(req);
-      const result = await telebun.handleCallback(body);
-      if (result) {
-        return json(res, { ok: true, session: result });
+      const apiUrl = `https://api.telegram.org/bot${BOT_TOKEN}`;
+
+      // ── User sent /start <sessionId> ────────────────────────────
+      if (body.message && body.message.text && body.message.text.startsWith('/start')) {
+        const parts = body.message.text.split(/\s+/);
+        const sessionId = parts[1] && parts[1].trim();
+        const chatId = body.message.chat.id;
+
+        if (!sessionId) {
+          // No session ID — send welcome message
+          await fetch(`${apiUrl}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: chatId,
+              text: '👋 Welcome! Scan a QR code from the HELM dashboard to sign in.',
+            }),
+          });
+          return json(res, { ok: true });
+        }
+
+        // Check if session exists and is still pending
+        const session = await telebun.checkSession(sessionId);
+        if (!session || session.status !== 'pending') {
+          await fetch(`${apiUrl}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: chatId,
+              text: '⏰ This QR code has expired or is invalid. Please generate a new one from the dashboard.',
+            }),
+          });
+          return json(res, { ok: true });
+        }
+
+        // Send confirmation button
+        await fetch(`${apiUrl}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text: '🔐 **Confirm Login**\n\nTap the button below to sign in to HELM:',
+            parse_mode: 'Markdown',
+            reply_markup: JSON.stringify({
+              inline_keyboard: [[
+                { text: '✅ Confirm Login', callback_data: `confirm:${sessionId}` }
+              ]],
+            }),
+          }),
+        });
+        return json(res, { ok: true });
       }
-      return json(res, { ok: false, error: 'Invalid callback' }, 400);
+
+      // ── User tapped inline button ───────────────────────────────
+      if (body.callback_query) {
+        const cb = body.callback_query;
+        const chatId = cb.message.chat.id;
+        const msgId = cb.message.message_id;
+        const data = cb.data || '';
+        const from = cb.from || {};
+
+        if (!data.startsWith('confirm:')) {
+          // Unknown callback
+          await fetch(`${apiUrl}/answerCallbackQuery`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              callback_query_id: cb.id,
+              text: 'Unrecognized action',
+            }),
+          });
+          return json(res, { ok: true });
+        }
+
+        const sessionId = data.split(':', 2)[1];
+        const authenticatedAt = new Date().toISOString();
+
+        // Build signed callback payload (matching Telebun's format)
+        const signable = [sessionId, String(from.id), authenticatedAt].join('|');
+        const signature = crypto.createHmac('sha256', BOT_TOKEN).update(signable, 'utf8').digest('hex');
+
+        const signedPayload = {
+          sessionId,
+          user: {
+            id: from.id,
+            is_bot: from.is_bot || false,
+            first_name: from.first_name || '',
+            last_name: from.last_name || '',
+            username: from.username || '',
+            language_code: from.language_code || '',
+          },
+          authenticatedAt,
+          signature,
+        };
+
+        await telebun.handleCallback(signedPayload);
+
+        // Edit message to show success
+        await fetch(`${apiUrl}/editMessageText`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: chatId,
+            message_id: msgId,
+            text: '✅ **Login confirmed!**\n\nYou can close this chat and return to the dashboard.',
+            parse_mode: 'Markdown',
+            reply_markup: JSON.stringify({ inline_keyboard: [] }),
+          }),
+        });
+
+        // Answer callback query
+        await fetch(`${apiUrl}/answerCallbackQuery`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            callback_query_id: cb.id,
+            text: '✅ Login successful!',
+          }),
+        });
+
+        return json(res, { ok: true });
+      }
+
+      // Unknown update type — acknowledge
+      return json(res, { ok: true });
     } catch (err) {
-      return json(res, { ok: false, error: err.message }, 500);
+      console.error('Telegram callback error:', err);
+      return json(res, { ok: true }); // Always 200 to Telegram
     }
   }
 

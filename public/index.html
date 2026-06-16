@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#09090b">
+<link rel="icon" type="image/svg+xml" href="/icon.svg">
 <link rel="manifest" href="/manifest.json">
 <title>HELM</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css">
@@ -176,14 +177,17 @@ button{font-family:inherit}
 .login-screen{position:fixed;inset:0;z-index:9999;background:var(--bg);display:none;flex-direction:column;align-items:center;justify-content:center;padding:32px}
 .login-screen.show{display:flex}
 .login-box{width:100%;max-width:320px;display:flex;flex-direction:column;gap:14px}
-.login-box h2{font-size:1.2rem;font-weight:800;letter-spacing:-.3px;text-align:center;margin-bottom:4px}
+.login-box .logo{text-align:center;margin-bottom:2px}
+.login-box .logo img{width:150px;height:150px;display:block;margin:0 auto 12px}
+.login-box .logo span{font-size:1.2rem;font-weight:800;letter-spacing:-.3px;display:block}
 .login-box p{font-size:.7rem;color:var(--t3);text-align:center;margin-bottom:8px}
 .login-inp{background:var(--bg3);border:1px solid var(--bd);border-radius:10px;padding:14px;color:var(--t1);font-size:.85rem;width:100%;font-family:inherit;outline:none;transition:border .2s;text-align:center}
 .login-inp:focus{border-color:var(--acc)}
 .login-btn{padding:14px;border-radius:10px;border:none;background:var(--acc);color:#fff;font-size:.85rem;font-weight:700;cursor:pointer;transition:opacity .2s;width:100%}
 .login-btn:active{opacity:.8}
 .login-btn:disabled{opacity:.4;cursor:default}
-.login-error{color:var(--red);font-size:.65rem;font-weight:600;text-align:center;min-height:20px;padding:4px 0}
+.login-error{color:var(--red);font-size:.65rem;font-weight:600;text-align:center;padding:4px 0}
+.login-error:empty{display:none}
 .login-div{display:flex;align-items:center;gap:8px;color:var(--t4);font-size:.6rem;font-weight:600}
 .login-div::before,.login-div::after{content:'';flex:1;height:1px;background:var(--bd)}
 .tg-btn{padding:12px;border-radius:10px;border:1px solid var(--bd);background:var(--bg2);color:var(--t1);font-size:.75rem;font-weight:600;cursor:pointer;transition:all .15s;width:100%;display:flex;align-items:center;justify-content:center;gap:6px}
@@ -285,21 +289,21 @@ button{font-family:inherit}
 
 <div class="login-screen" id="loginScreen">
   <div class="login-box">
-    <h2>Control Panel</h2>
+    <div class="logo"><img src="/icon.svg" alt=""><span>HELM</span></div>
     <p>Please log in to manage your server</p>
     <input class="login-inp" type="text" id="loginUser" placeholder="Username" autocomplete="username" spellcheck="false">
     <input class="login-inp" type="password" id="loginPass" placeholder="Password" autocomplete="current-password">
     <button class="login-btn" id="loginBtn" onclick="doLogin()">Sign In</button>
     <div class="login-error" id="loginError"></div>
 
-    <div class="login-div">or</div>
+    <div class="login-div" id="loginDiv">or</div>
 
-    <button class="tg-btn" id="tgLoginBtn" onclick="startTgLogin()">✈️ Login with Telegram</button>
+    <button class="tg-btn" id="tgLoginBtn" onclick="startTgLogin()">Login with Telegram</button>
 
     <!-- QR area (hidden until tg login clicked) -->
     <div class="qr-wrap" id="qrWrap" style="display:none">
       <div id="qrImgWrap"></div>
-      <div class="qr-txt" id="qrTxt">Scan with Telegram to sign in</div>
+      <div class="qr-txt" id="qrTxt">Scan this QR with Telegram, or tap to open directly</div>
       <button class="login-btn" id="qrCancelBtn" onclick="cancelTgLogin()" style="background:var(--t4);font-size:.7rem;padding:8px">Cancel</button>
     </div>
   </div>
@@ -339,7 +343,8 @@ async function init() {
   const cred = tgToken || auth;
   if (cred) {
     try {
-      const r = await fetch('/api/metrics');
+      const h = cred === tgToken ? { 'Authorization': 'Bearer ' + tgToken } : { 'Authorization': 'Basic ' + auth };
+      const r = await fetch('/api/auth/check', { headers: h });
       if (r.ok) { startApp(); return; }
     } catch {}
   }
@@ -347,6 +352,7 @@ async function init() {
   sessionStorage.removeItem('auth');
   sessionStorage.removeItem('tg_token');
   $('#loginScreen').classList.add('show');
+  checkTgStatus();
 }
 
 async function doLogin() {
@@ -366,11 +372,29 @@ async function doLogin() {
   }
 }
 
+// ── Check Telegram status (hide button if not configured) ──
+async function checkTgStatus() {
+  const btn = $('#tgLoginBtn');
+  const div = $('#loginDiv');
+  try {
+    const r = await originalFetch('/api/auth/tg/status');
+    const d = await r.json();
+    if (!d.enabled) {
+      btn.style.display = 'none';
+      div.style.display = 'none';
+    }
+  } catch {
+    btn.style.display = 'none';
+    div.style.display = 'none';
+  }
+}
+
 // ── Telegram QR Login ──
 async function startTgLogin() {
-  const btn = $('#tgLoginBtn'); btn.disabled = true; btn.textContent = '⏳ Loading...';
+  const btn = $('#tgLoginBtn'); btn.disabled = true; btn.textContent = 'Loading...';
   const wrap = $('#qrWrap'); wrap.style.display = 'none';
   const err = $('#loginError'); err.textContent = '';
+  const loginDiv = $('#loginDiv'); loginDiv.style.display = 'none';
 
   try {
     const r = await originalFetch('/api/auth/tg/qr', { method: 'POST' });
@@ -380,16 +404,7 @@ async function startTgLogin() {
     btn.style.display = 'none';
     wrap.style.display = 'flex';
     $('#qrImgWrap').innerHTML = `<a href="${d.deepLink}" target="_blank" rel="noopener"><img src="${d.qrDataUrl}" alt="QR Code"></a>`;
-    $('#qrTxt').innerHTML = 'Scan QR with <strong>Telegram</strong> to sign in';
-    // Add clickable deep link below for desktop users
-    const existingLink = document.getElementById('tgDeepLink');
-    if (!existingLink) {
-      const linkWrap = document.createElement('div');
-      linkWrap.id = 'tgDeepLink';
-      linkWrap.style.cssText = 'text-align:center;margin-top:4px';
-      linkWrap.innerHTML = `<a href="${d.deepLink}" target="_blank" rel="noopener" style="color:var(--acc);font-size:.65rem;font-weight:600;text-decoration:none">↗ Buka di Telegram</a>`;
-      $('#qrWrap').appendChild(linkWrap);
-    }
+    $('#qrTxt').innerHTML = 'Scan this QR with <strong>Telegram</strong>, or tap to open directly';
 
     // Poll for session verification
     const sid = d.sessionId;
@@ -415,7 +430,7 @@ async function startTgLogin() {
     }, 1000);
   } catch (e) {
     err.textContent = e.message || 'Telegram auth unavailable';
-    btn.disabled = false; btn.textContent = '✈️ Login with Telegram';
+    btn.disabled = false; btn.textContent = 'Login with Telegram';
   }
 }
 
@@ -423,15 +438,15 @@ function cancelTgLogin() {
   if (tgPollTimer) { clearInterval(tgPollTimer); tgPollTimer = null; }
   $('#tgLoginBtn').style.display = '';
   $('#tgLoginBtn').disabled = false;
-  $('#tgLoginBtn').textContent = '✈️ Login with Telegram';
+  $('#tgLoginBtn').textContent = 'Login with Telegram';
   $('#qrWrap').style.display = 'none';
   $('#qrImgWrap').innerHTML = '';
-  const dl = document.getElementById('tgDeepLink');
-  if (dl) dl.remove();
+  $('#loginDiv').style.display = '';
 }
 
 function startApp() {
   poll();
+  setInterval(()=>{cd--;if(cd<=0)poll()},1000);
   connTerm();
   // Nav setup
   $$('.nav button[data-p]').forEach(b=>{b.onclick=()=>{const p=b.dataset.p;$$('.nav button').forEach(x=>x.classList.toggle('on',x===b));$$('.pnl').forEach(x=>x.classList.toggle('active',x.id===p));if(p==='pTerm')setTimeout(()=>{fitTerm();term.focus()},80);if(p==='pSvc')loadServices();if(p==='pSys'){loadFirewall();loadCron()}}});
@@ -525,7 +540,6 @@ function update(d){
 
 let cd=5;
 async function poll(){try{const r=await fetch('/api/metrics'),d=await r.json();update(d);$('#sDot').classList.remove('off');$('#sTxt').textContent='Online'}catch{$('#sDot').classList.add('off');$('#sTxt').textContent='Offline'}cd=5}
-setInterval(()=>{cd--;if(cd<=0)poll()},1000);
 
 // Kill process
 async function killProc(pid,name){if(!confirm(`Kill PID ${pid} (${name})?`))return;try{const r=await fetch(`/api/kill/${pid}`);const d=await r.json();toast(d.ok?`Killed PID ${pid}`:'Kill failed')}catch{toast('Error')}}
