@@ -24,6 +24,7 @@
     "node": ">=20.0.0"
   },
   "dependencies": {
+    "@luckywirasakti/telebun": "^0.1.1",
     "dotenv": "^17.4.2",
     "node-pty": "^1.1.0",
     "ws": "^8.21.0"

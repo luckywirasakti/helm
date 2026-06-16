@@ -184,6 +184,15 @@ button{font-family:inherit}
 .login-btn:active{opacity:.8}
 .login-btn:disabled{opacity:.4;cursor:default}
 .login-error{color:var(--red);font-size:.65rem;font-weight:600;text-align:center;min-height:20px;padding:4px 0}
+.login-div{display:flex;align-items:center;gap:8px;color:var(--t4);font-size:.6rem;font-weight:600}
+.login-div::before,.login-div::after{content:'';flex:1;height:1px;background:var(--bd)}
+.tg-btn{padding:12px;border-radius:10px;border:1px solid var(--bd);background:var(--bg2);color:var(--t1);font-size:.75rem;font-weight:600;cursor:pointer;transition:all .15s;width:100%;display:flex;align-items:center;justify-content:center;gap:6px}
+.tg-btn:active{transform:scale(.97);background:var(--bg3)}
+.tg-btn:disabled{opacity:.4;cursor:default}
+.qr-wrap{display:flex;flex-direction:column;align-items:center;gap:10px;padding:12px 0}
+.qr-wrap img{width:180px;height:180px;border-radius:12px;background:#fff;padding:8px}
+.qr-txt{font-size:.6rem;color:var(--t3);text-align:center}
+.qr-txt strong{color:var(--t1)}
 </style>
 </head>
 <body>
@@ -282,6 +291,17 @@ button{font-family:inherit}
     <input class="login-inp" type="password" id="loginPass" placeholder="Password" autocomplete="current-password">
     <button class="login-btn" id="loginBtn" onclick="doLogin()">Sign In</button>
     <div class="login-error" id="loginError"></div>
+
+    <div class="login-div">or</div>
+
+    <button class="tg-btn" id="tgLoginBtn" onclick="startTgLogin()">✈️ Login with Telegram</button>
+
+    <!-- QR area (hidden until tg login clicked) -->
+    <div class="qr-wrap" id="qrWrap" style="display:none">
+      <div id="qrImgWrap"></div>
+      <div class="qr-txt" id="qrTxt">Scan with Telegram to sign in</div>
+      <button class="login-btn" id="qrCancelBtn" onclick="cancelTgLogin()" style="background:var(--t4);font-size:.7rem;padding:8px">Cancel</button>
+    </div>
   </div>
 </div>
 
@@ -293,28 +313,39 @@ const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s);
 const C=2*Math.PI*42;
 const cpuHist=[],ramHist=[],MAX_HIST=60;
 
-// Override Fetch for Basic Auth
+// Override Fetch for Basic Auth & Bearer token
 const originalFetch = window.fetch;
 window.fetch = function(url, opts = {}) {
+  opts.headers = opts.headers || {};
+  // Bearer token (Telegram QR) takes priority
+  const tgToken = sessionStorage.getItem('tg_token');
+  if (tgToken && !opts.headers['Authorization']) {
+    opts.headers['Authorization'] = 'Bearer ' + tgToken;
+  }
+  // Fallback to Basic Auth
   const auth = sessionStorage.getItem('auth');
-  if (auth) {
-    opts.headers = opts.headers || {};
-    if (!opts.headers['Authorization']) {
-      opts.headers['Authorization'] = 'Basic ' + auth;
-    }
+  if (auth && !opts.headers['Authorization']) {
+    opts.headers['Authorization'] = 'Basic ' + auth;
   }
   return originalFetch.call(window, url, opts);
 };
 
 // Auth Logic
+let tgPollTimer = null;
+
 async function init() {
   const auth = sessionStorage.getItem('auth');
-  if (auth) {
+  const tgToken = sessionStorage.getItem('tg_token');
+  const cred = tgToken || auth;
+  if (cred) {
     try {
       const r = await fetch('/api/metrics');
       if (r.ok) { startApp(); return; }
     } catch {}
   }
+  // Clear invalid tokens
+  sessionStorage.removeItem('auth');
+  sessionStorage.removeItem('tg_token');
   $('#loginScreen').classList.add('show');
 }
 
@@ -333,6 +364,59 @@ async function doLogin() {
     $('#loginError').textContent = 'Login failed. Check username/password.';
     btn.disabled = false;
   }
+}
+
+// ── Telegram QR Login ──
+async function startTgLogin() {
+  const btn = $('#tgLoginBtn'); btn.disabled = true; btn.textContent = '⏳ Loading...';
+  const wrap = $('#qrWrap'); wrap.style.display = 'none';
+  const err = $('#loginError'); err.textContent = '';
+
+  try {
+    const r = await originalFetch('/api/auth/tg/qr', { method: 'POST' });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'Failed to generate QR');
+
+    btn.style.display = 'none';
+    wrap.style.display = 'flex';
+    $('#qrImgWrap').innerHTML = `<img src="${d.qrDataUrl}" alt="QR Code">`;
+    $('#qrTxt').innerHTML = 'Scan QR with <strong>Telegram</strong> to sign in';
+
+    // Poll for session verification
+    const sid = d.sessionId;
+    let attempts = 0;
+    tgPollTimer = setInterval(async () => {
+      attempts++;
+      if (attempts > 60) { // 60s timeout
+        cancelTgLogin();
+        err.textContent = 'QR expired. Try again.';
+        return;
+      }
+      try {
+        const pr = await originalFetch(`/api/auth/tg/session/${sid}`);
+        const pd = await pr.json();
+        if (pd.status === 'verified') {
+          clearInterval(tgPollTimer);
+          tgPollTimer = null;
+          sessionStorage.setItem('tg_token', pd.token);
+          $('#loginScreen').classList.remove('show');
+          startApp();
+        }
+      } catch {}
+    }, 1000);
+  } catch (e) {
+    err.textContent = e.message || 'Telegram auth unavailable';
+    btn.disabled = false; btn.textContent = '✈️ Login with Telegram';
+  }
+}
+
+function cancelTgLogin() {
+  if (tgPollTimer) { clearInterval(tgPollTimer); tgPollTimer = null; }
+  $('#tgLoginBtn').style.display = '';
+  $('#tgLoginBtn').disabled = false;
+  $('#tgLoginBtn').textContent = '✈️ Login with Telegram';
+  $('#qrWrap').style.display = 'none';
+  $('#qrImgWrap').innerHTML = '';
 }
 
 function startApp() {
@@ -515,7 +599,7 @@ window.addEventListener('resize',()=>setTimeout(fitTerm,50));
 window.addEventListener('orientationchange',()=>setTimeout(fitTerm,300));
 if(window.visualViewport)window.visualViewport.addEventListener('resize',()=>setTimeout(fitTerm,50));
 let tws=null;
-function connTerm(){const pr=location.protocol==='https:'?'wss:':'ws:';const auth=sessionStorage.getItem('auth');tws=new WebSocket(`${pr}//${location.host}/ws/terminal?auth=${encodeURIComponent(auth)}`);tws.onopen=()=>setTimeout(fitTerm,80);tws.onmessage=e=>{try{const m=JSON.parse(e.data);if(m.type==='output')term.write(m.data);else if(m.type==='exit')term.writeln(`\r\n\x1b[31mexit ${m.exitCode}\x1b[0m`)}catch{}};tws.onclose=()=>term.writeln('\r\n\x1b[33mdisconnected\x1b[0m')}
+function connTerm(){const pr=location.protocol==='https:'?'wss:':'ws:';const tok=sessionStorage.getItem('tg_token')||sessionStorage.getItem('auth');tws=new WebSocket(`${pr}//${location.host}/ws/terminal?auth=${encodeURIComponent(tok)}`);tws.onopen=()=>setTimeout(fitTerm,80);tws.onmessage=e=>{try{const m=JSON.parse(e.data);if(m.type==='output')term.write(m.data);else if(m.type==='exit')term.writeln(`\r\n\x1b[31mexit ${m.exitCode}\x1b[0m`)}catch{}};tws.onclose=()=>term.writeln('\r\n\x1b[33mdisconnected\x1b[0m')}
 // Kirim keyboard input ke server via WebSocket
 term.onData(data => {
   if (tws && tws.readyState === 1) {
