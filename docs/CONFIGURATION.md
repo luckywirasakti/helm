@@ -10,6 +10,9 @@ HELM reads configuration from a `.env` file in the project root (loaded via
 | `HELM_PORT` | `20131`     | Port for HTTP and WebSocket traffic.              |
 | `HELM_USER` | `admin`     | Basic-auth username.                              |
 | `HELM_PASS` | `password`  | Basic-auth password. **Change before deploying.** |
+| `TELEGRAM_BOT_TOKEN` | — | Bot token for Telegram QR login (from @BotFather). |
+| `TELEGRAM_BOT_USERNAME` | — | Bot username (e.g. `nemesismonitorbot`).          |
+| `TELEGRAM_CALLBACK_URL` | — | Public HTTPS callback for Telegram webhook.       |
 | `SHELL`     | `/bin/bash` | Shell launched for the web terminal.              |
 | `HOME`      | `/root`     | Working directory for terminal sessions.          |
 
@@ -42,12 +45,14 @@ restart/stop systemd services, manage the firewall, kill processes, and reboot t
 host. Treat access to it as equivalent to root SSH access.
 
 ### Authentication
-- **REST API** — every `/api/*` request must send an HTTP Basic-Auth header:
-  `Authorization: Basic base64(HELM_USER:HELM_PASS)`.
+- **REST API** — every `/api/*` request must send either:
+  - `Authorization: Basic base64(HELM_USER:HELM_PASS)` (Basic Auth), or
+  - `Authorization: Bearer <token>` (from Telegram QR login)
 - **WebSockets** — browsers cannot set custom headers on WS connections, so the
-  terminal and log streams authenticate with a query parameter:
-  `wss://host/ws/terminal?auth=base64(HELM_USER:HELM_PASS)`. Unauthorized sockets
-  are closed with code `4001`.
+  terminal and log streams authenticate with a query parameter or Bearer token:
+  `wss://host/ws/terminal?auth=base64(HELM_USER:HELM_PASS)`. Bearer tokens
+  are also accepted as a query parameter: `?token=<tg_token>`.
+  Unauthorized sockets are closed with code `4001`.
 
 > ⚠️ Static files (the PWA shell) are served **without** authentication — only the
 > API and WebSocket endpoints are guarded. Keep `index.html` itself behind your

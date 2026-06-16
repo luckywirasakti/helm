@@ -2,11 +2,9 @@
 
 Base URL: `http://<host>:<HELM_PORT>` (default port `20131`).
 
-All `/api/*` endpoints require HTTP Basic Auth:
-
-```
-Authorization: Basic base64(HELM_USER:HELM_PASS)
-```
+All `/api/*` endpoints require authentication via one of:
+- **Basic Auth**: `Authorization: Basic base64(HELM_USER:HELM_PASS)`
+- **Bearer Token**: `Authorization: Bearer <token>` (from Telegram QR login)
 
 Unauthorized requests receive `401 { "ok": false, "error": "Unauthorized" }`.
 Unhandled errors return `500 { "ok": false, "error": "<message>" }`. Responses are
@@ -15,6 +13,44 @@ JSON and include `Access-Control-Allow-Origin: *`.
 ---
 
 ## REST endpoints
+
+### `POST /api/auth/tg/qr`
+Generate a QR code for Telegram login. Returns a session ID, QR data URL, and
+deep link.
+
+```jsonc
+{
+  "ok": true,
+  "sessionId": "abc123...",
+  "qrDataUrl": "data:image/png;base64,...",
+  "deepLink": "tg://msg?text=..."
+}
+```
+
+The QR code must be scanned with the **Telegram app** (Settings → Devices → Scan QR)
+within 60 seconds.
+
+### `GET /api/auth/tg/session/<sessionId>`
+Poll for the QR session status. Once the user scans and confirms via Telegram,
+the status becomes `verified` and a Bearer token is returned.
+
+```jsonc
+// Pending
+{ "status": "pending" }
+
+// Verified — token valid for 1 hour
+{ "status": "verified", "token": "helm_tg_<sha256>" }
+
+// Expired
+{ "status": "expired" }
+```
+
+### `POST /api/auth/tg/callback`
+**Webhook endpoint** called by Telegram's Bot API when a user taps the
+"Confirm Login" button. The bot must be configured with this URL via
+`setWebhook`. Internal — not for client use.
+
+---
 
 ### `GET /api/metrics`
 Returns a full system snapshot.
