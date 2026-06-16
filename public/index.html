@@ -379,8 +379,17 @@ async function startTgLogin() {
 
     btn.style.display = 'none';
     wrap.style.display = 'flex';
-    $('#qrImgWrap').innerHTML = `<img src="${d.qrDataUrl}" alt="QR Code">`;
+    $('#qrImgWrap').innerHTML = `<a href="${d.deepLink}" target="_blank" rel="noopener"><img src="${d.qrDataUrl}" alt="QR Code"></a>`;
     $('#qrTxt').innerHTML = 'Scan QR with <strong>Telegram</strong> to sign in';
+    // Add clickable deep link below for desktop users
+    const existingLink = document.getElementById('tgDeepLink');
+    if (!existingLink) {
+      const linkWrap = document.createElement('div');
+      linkWrap.id = 'tgDeepLink';
+      linkWrap.style.cssText = 'text-align:center;margin-top:4px';
+      linkWrap.innerHTML = `<a href="${d.deepLink}" target="_blank" rel="noopener" style="color:var(--acc);font-size:.65rem;font-weight:600;text-decoration:none">↗ Buka di Telegram</a>`;
+      $('#qrWrap').appendChild(linkWrap);
+    }
 
     // Poll for session verification
     const sid = d.sessionId;
@@ -417,6 +426,8 @@ function cancelTgLogin() {
   $('#tgLoginBtn').textContent = '✈️ Login with Telegram';
   $('#qrWrap').style.display = 'none';
   $('#qrImgWrap').innerHTML = '';
+  const dl = document.getElementById('tgDeepLink');
+  if (dl) dl.remove();
 }
 
 function startApp() {
