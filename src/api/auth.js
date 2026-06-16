@@ -93,7 +93,7 @@ async function handleAuth(req, res, url) {
     if (!ENABLED) return json(res, { ok: false, error: 'Telegram auth not configured' }, 503);
 
     try {
-      const session = telebun.generate();
+      const session = await telebun.generate();
       return json(res, {
         ok: true,
         sessionId: session.sessionId,
@@ -112,7 +112,7 @@ async function handleAuth(req, res, url) {
 
     try {
       const body = await parseBody(req);
-      const result = telebun.handleCallback(body);
+      const result = await telebun.handleCallback(body);
       if (result) {
         return json(res, { ok: true, session: result });
       }
@@ -129,7 +129,7 @@ async function handleAuth(req, res, url) {
 
     try {
       const sessionId = sessionMatch[1];
-      const session = telebun.checkSession(sessionId);
+      const session = await telebun.checkSession(sessionId);
 
       if (!session) {
         return json(res, { ok: false, error: 'Session not found or expired' }, 404);
