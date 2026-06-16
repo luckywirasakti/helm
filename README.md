@@ -17,6 +17,7 @@ Most server panels are too heavy or not designed for mobile. HELM is different. 
 - 📜 **Live Journal**: Stream system logs directly to your device via WebSockets.
 - ☰ **Quick Actions**: One-tap server reboots, cache clearing, and package updates.
 - 🛡️ **Built-in Security**: Firewall (UFW) management and native authentication UI.
+- ✈️ **Telegram QR Login**: Passwordless authentication via Telegram QR code scan.
 - 📱 **PWA Perfection**: Add to Home Screen for a fullscreen, standalone experience.
 
 ## 📸 Screenshots
@@ -36,6 +37,7 @@ Most server panels are too heavy or not designed for mobile. HELM is different. 
 - **Communication**: WebSockets (`ws`) for real-time duplex streaming
 - **Terminal**: `node-pty` (server-side PTY) + xterm.js (browser)
 - **Frontend**: Pure Vanilla JS & CSS Variables (Zero dependencies, ultra-fast)
+- **Auth**: HTTP Basic Auth + Bearer token via `@luckywirasakti/telebun` (Telegram QR)
 - **Config**: `dotenv`
 
 ## 🚀 Quick Start
@@ -73,6 +75,9 @@ Most server panels are too heavy or not designed for mobile. HELM is different. 
 | `HELM_PORT` | `20131`      | HTTP/WebSocket listen port                   |
 | `HELM_USER` | `admin`      | Basic-auth username                          |
 | `HELM_PASS` | `password`   | Basic-auth password — **change in production** |
+| `TELEGRAM_BOT_TOKEN` | —     | Bot token for Telegram QR login (from @BotFather) |
+| `TELEGRAM_BOT_USERNAME` | —  | Bot username (e.g. `nemesismonitorbot`)       |
+| `TELEGRAM_CALLBACK_URL` | —   | Public HTTPS callback URL for Telegram webhook |
 
 ## 📁 Project Structure
 ```
@@ -80,11 +85,12 @@ helm/
 ├── src/
 │   ├── app.js              # HTTP + WebSocket bootstrap
 │   ├── api/
-│   │   └── router.js       # Static file serving + all /api/* routes
+│   │   ├── router.js       # Static file serving + all /api/* routes
+│   │   └── auth.js         # Telegram QR login (generate, poll, callback)
 │   ├── ws/
 │   │   └── handler.js      # /ws/terminal and /ws/logs/* streams
 │   ├── middleware/
-│   │   ├── auth.js         # Basic-auth (header + WS query param)
+│   │   ├── auth.js         # Basic-auth + Bearer token (header + WS query param)
 │   │   └── logger.js       # Request logging
 │   └── utils/
 │       └── metrics.js      # System metrics collection
@@ -99,7 +105,7 @@ helm/
 - [API Reference](docs/API.md) — REST endpoints & WebSocket protocol
 
 ## 🔒 Security Note
-HELM executes privileged system commands (`systemctl`, `ufw`, `kill`, `reboot`) and exposes a full shell over WebSocket. **Never expose it to the public internet without TLS and authentication.** Always run it behind a reverse proxy (Caddy/Nginx) with HTTPS. Authentication is enforced via HTTP Basic Auth on every `/api/*` route and via an `auth` query parameter on WebSocket connections — see [docs/CONFIGURATION.md](docs/CONFIGURATION.md#security).
+HELM executes privileged system commands (`systemctl`, `ufw`, `kill`, `reboot`) and exposes a full shell over WebSocket. **Never expose it to the public internet without TLS and authentication.** Always run it behind a reverse proxy (Caddy/Nginx) with HTTPS. Authentication is enforced via HTTP Basic Auth or Bearer token (from Telegram QR login) on every `/api/*` route and via an `auth` query parameter or Bearer token on WebSocket connections — see [docs/CONFIGURATION.md](docs/CONFIGURATION.md#security).
 
 ---
 *Take the helm of your infrastructure. Sikat! 🚀*
